@@ -4,87 +4,80 @@ import os
 import shutil
 import time
 import duckdb
-import subprocess  # Added for better command execution
-
-from luigi.contrib.spark import SparkSubmitTask
+import subprocess
+import glob
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('luigi-interface')
 
 class InputFileTask(luigi.ExternalTask):
+    """Checks for the lookup files that MUST exist before we start."""
     path = luigi.Parameter()
-    
     def output(self):
         return luigi.LocalTarget(self.path)
 
-class SparkJobTask(SparkSubmitTask):
+class SparkJobTask(luigi.Task):
+    # Paths configured for your 2024 HVFHV data
     taxi_data = '../data/fhvhv_tripdata_2024-*.parquet'
     zone_data = '../data/taxi_zone_lookup.csv'
     weather_data = '../data/72505394728.csv'
-    success_flag = '../output/_OKLUIGI'
+    
+    # We store this flag in the duckdb folder so it survives the output cleanup
+    success_flag = '../duckdb/spark_complete.flag'
     output_dir = '../output'
     job = '../spark/spark-job.py'
 
     def requires(self):
+        # Only require static files; we handle the taxi glob in run()
         return [
-                InputFileTask(path=self.zone_data),
-                InputFileTask(path=self.weather_data)
+            InputFileTask(path=self.zone_data),
+            InputFileTask(path=self.weather_data)
         ]
 
     def output(self):
         return luigi.LocalTarget(self.success_flag)
 
-    def complete(self):
-        # We only consider it complete if the flag exists AND the output dir exists
-        return os.path.exists(self.success_flag) and os.path.exists(self.output_dir)
-
     def run(self):
-        # 1. Clean up old failed attempts
+        # 1. Manual check for taxi data since Luigi's 'requires' handles globs poorly
+        if not glob.glob(self.taxi_data):
+            raise RuntimeError(f"No files found matching {self.taxi_data}")
+
+        # 2. Clean up old failed output directory
         if os.path.exists(self.output_dir):
             shutil.rmtree(self.output_dir)
-        if os.path.exists(self.success_flag):
-            os.remove(self.success_flag)
-
-        # 2. Build the command
+            
         cmd = [
             "spark-submit",
             "--master", "local[*]",
             "--conf", "spark.sql.shuffle.partitions=2",
             "--name", "NYC Taxi/Weather Analysis",
-            self.job,
-            self.taxi_data,
-            self.zone_data,
-            self.weather_data,
-            self.output_dir
+            self.job, self.taxi_data, self.zone_data, self.weather_data, self.output_dir
         ]
 
-        logger.info(f"🚀 Launching Spark: {' '.join(cmd)}")
-
+        logger.info(f"🚀 Running Spark: {' '.join(cmd)}")
+        
         try:
-            # 3. Use subprocess.run with check=True to catch non-zero exit codes
             subprocess.run(cmd, check=True)
-            
-            # 4. Only write success flag if we get here
             with open(self.success_flag, "w") as f:
-                f.write(f"Completed at {time.ctime()}")
-            logger.info("✅ Spark transformation finished successfully.")
-            
+                f.write(f"Done: {time.ctime()}")
         except subprocess.CalledProcessError as e:
-            logger.error(f"❌ Spark job failed with exit code {e.returncode}")
-            # Re-raise so Luigi knows this task actually failed
+            logger.error(f"❌ Spark failed with exit code {e.returncode}")
             raise e
 
 class LoadDuckDBTask(luigi.Task):
     loadpath = luigi.Parameter(default="../output/*.parquet")
     queries = '../duckdb/queries.sql'
     duckdb_file = '../duckdb/final.db'
-    duckdb_success = '../output/duckdb_loaded.flag'
+    output_dir = '../output'
+    
+    # This is the "Master Flag"
+    final_success = '../duckdb/pipeline_complete.flag'
 
     def requires(self):
         return SparkJobTask()
 
     def output(self):
-        return luigi.LocalTarget(self.duckdb_success)
+        return luigi.LocalTarget(self.final_success)
 
     def run(self):
         sql_file = os.path.abspath(self.queries)
@@ -98,8 +91,14 @@ class LoadDuckDBTask(luigi.Task):
         con.execute(sql_script)
         con.close()
 
-        with open(self.output().path, "w") as f:
-            f.write("Success")
+        # CLEANUP: Delete the giant output folder now that DuckDB has the data
+        if os.path.exists(self.output_dir):
+            logger.info(f"🗑️ Cleaning up {self.output_dir}")
+            shutil.rmtree(self.output_dir)
+
+        # Write the final flag
+        with open(self.final_success, "w") as f:
+            f.write(f"Pipeline finished and cleaned at {time.ctime()}")
 
 if __name__ == "__main__":
-    luigi.build([LoadDuckDBTask()], local_scheduler=True, workers=1)
+    luigi.build([LoadDuckDBTask()], local_scheduler=False, workers=1)
