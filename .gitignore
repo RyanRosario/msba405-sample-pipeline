@@ -1,4 +1,18 @@
+# Don't include data files or output
 *.csv
 *.parquet
 output
 data
+
+# Ignore the Luigi logs inside the luigi folder
+luigi/tmp/
+
+# Ignore Spark's staging and metadata directories
+_temporary/
+.spark-staging/
+
+# Ignore your pipeline output and database files
+output/
+*.db
+*.db.wal
+*.flag
