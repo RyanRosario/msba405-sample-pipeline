@@ -32,10 +32,17 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
-Initialize the database:
+Set FAB as the auth manager (required in Airflow 3 to enable `airflow users` CLI commands):
+
+```bash
+export AIRFLOW__CORE__AUTH_MANAGER="airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager"
+```
+
+Initialize the Airflow and FAB databases:
 
 ```bash
 airflow db migrate
+airflow fab-db migrate
 ```
 
 Create an administrator:
@@ -65,6 +72,7 @@ After=network.target
 [Service]
 User=ubuntu
 Environment="AIRFLOW_HOME=/home/ubuntu/airflow"
+Environment="AIRFLOW__CORE__AUTH_MANAGER=airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager"
 ExecStart=/home/ubuntu/airflow-venv/bin/airflow scheduler
 Restart=on-failure
 RestartSec=5s
@@ -85,6 +93,7 @@ After=network.target
 [Service]
 User=ubuntu
 Environment="AIRFLOW_HOME=/home/ubuntu/airflow"
+Environment="AIRFLOW__CORE__AUTH_MANAGER=airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager"
 ExecStart=/home/ubuntu/airflow-venv/bin/airflow dag-processor
 Restart=on-failure
 RestartSec=5s
@@ -105,6 +114,7 @@ After=network.target
 [Service]
 User=ubuntu
 Environment="AIRFLOW_HOME=/home/ubuntu/airflow"
+Environment="AIRFLOW__CORE__AUTH_MANAGER=airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager"
 ExecStart=/home/ubuntu/airflow-venv/bin/airflow api-server -p 8080
 Restart=on-failure
 RestartSec=5s
