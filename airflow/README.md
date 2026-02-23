@@ -24,9 +24,10 @@ pip install -e . --constraint "$CONSTRAINT_URL"
 
 > `apache-airflow-providers-fab` is included in `requirements.txt` and `pyproject.toml`. It is required in Airflow 3 to enable `airflow users create`, which was removed from core.
 
-Set FAB as the auth manager (required in Airflow 3):
+Set required environment variables (or load via `set -a && source pipeline.env && set +a`):
 
 ```bash
+export AIRFLOW_HOME=~/airflow
 export AIRFLOW__CORE__AUTH_MANAGER="airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager"
 ```
 
@@ -53,18 +54,23 @@ mkdir -p $AIRFLOW_HOME/dags
 
 Airflow 3 runs as three separate processes. Install them as systemd services so they survive reboots and restart automatically on failure.
 
-Create `/etc/systemd/system/airflow-scheduler.service`:
+Run the following from your project root (e.g. `~/msba405-sample-pipeline`). The script substitutes your actual username, home directory, and airflow binary path at write time — systemd does not expand `~` or `$HOME`:
 
-```ini
+```bash
+AIRFLOW_BIN="$(which airflow)"
+PIPELINE_DIR="$(pwd)"
+
+sudo tee /etc/systemd/system/airflow-scheduler.service > /dev/null << EOF
 [Unit]
 Description=Airflow Scheduler
 After=network.target
 
 [Service]
-User=ubuntu
-Environment="AIRFLOW_HOME=/home/ubuntu/airflow"
+User=${USER}
+Environment="AIRFLOW_HOME=${HOME}/airflow"
+EnvironmentFile=${PIPELINE_DIR}/pipeline.env
 Environment="AIRFLOW__CORE__AUTH_MANAGER=airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager"
-ExecStart=/home/ubuntu/airflow-venv/bin/airflow scheduler
+ExecStart=${AIRFLOW_BIN} scheduler
 Restart=on-failure
 RestartSec=5s
 StandardOutput=journal
@@ -72,20 +78,19 @@ StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
-```
+EOF
 
-Create `/etc/systemd/system/airflow-dag-processor.service`:
-
-```ini
+sudo tee /etc/systemd/system/airflow-dag-processor.service > /dev/null << EOF
 [Unit]
 Description=Airflow DAG Processor
 After=network.target
 
 [Service]
-User=ubuntu
-Environment="AIRFLOW_HOME=/home/ubuntu/airflow"
+User=${USER}
+Environment="AIRFLOW_HOME=${HOME}/airflow"
+EnvironmentFile=${PIPELINE_DIR}/pipeline.env
 Environment="AIRFLOW__CORE__AUTH_MANAGER=airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager"
-ExecStart=/home/ubuntu/airflow-venv/bin/airflow dag-processor
+ExecStart=${AIRFLOW_BIN} dag-processor
 Restart=on-failure
 RestartSec=5s
 StandardOutput=journal
@@ -93,20 +98,19 @@ StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
-```
+EOF
 
-Create `/etc/systemd/system/airflow-api-server.service`:
-
-```ini
+sudo tee /etc/systemd/system/airflow-api-server.service > /dev/null << EOF
 [Unit]
 Description=Airflow API Server
 After=network.target
 
 [Service]
-User=ubuntu
-Environment="AIRFLOW_HOME=/home/ubuntu/airflow"
+User=${USER}
+Environment="AIRFLOW_HOME=${HOME}/airflow"
+EnvironmentFile=${PIPELINE_DIR}/pipeline.env
 Environment="AIRFLOW__CORE__AUTH_MANAGER=airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager"
-ExecStart=/home/ubuntu/airflow-venv/bin/airflow api-server -p 8080
+ExecStart=${AIRFLOW_BIN} api-server -p 8080
 Restart=on-failure
 RestartSec=5s
 StandardOutput=journal
@@ -114,20 +118,19 @@ StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
-```
+EOF
 
-Enable and start all three services:
-
-```bash
 sudo systemctl daemon-reload
 sudo systemctl enable --now airflow-scheduler airflow-dag-processor airflow-api-server
 ```
 
-Open port 8080 in EC2 security, then access Airflow at:
+Open port 8080 in your GCP firewall rules, then access Airflow at:
 
 ```
 http://hostname:8080
 ```
+
+where `hostname` comes from the GCE console, or from the instructor during the demo.
 
 Manage services:
 
@@ -151,15 +154,22 @@ Source: https://docs.vultr.com/how-to-deploy-apache-airflow-on-ubuntu-20-04
 
 ## Execution
 
-Once you have created a DAG, move it to Airflow's DAGs folder:
+Once you have created a DAG, copy it to Airflow's DAGs folder:
 
 ```bash
 echo $AIRFLOW_HOME  # default: ~/airflow
-mv pipeline.py $AIRFLOW_HOME/dags/
+cp pipeline.py $AIRFLOW_HOME/dags/
+```
+
+Wait ~30 seconds for the DAG processor to pick it up, then verify:
+
+```bash
+airflow dags list
+airflow dags list-import-errors
 ```
 
 Trigger a DAG run:
 
 ```bash
-airflow dags trigger name_of_dag
+airflow dags trigger fhvhv_spark_to_duckdb
 ```

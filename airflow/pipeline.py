@@ -26,7 +26,7 @@ default_args = {
 dag = DAG(
     'fhvhv_spark_to_duckdb',
     default_args=default_args,
-    schedule_interval=None,  # Trigger manually; all 12 months are a one-shot batch
+    schedule=None,  # Trigger manually; all 12 months are a one-shot batch
     catchup=False,
 )
 
