@@ -54,9 +54,8 @@ so the pipeline can read them.
 
 Then run
 
-bash pipeline.sh
+`bash pipeline.sh`
 
-TIP FOR STUDENTS: Put your data into the root of your git repo so it's easy to run your
-code BUT add the file extensions to .gitignore so that the data is not committed to Github.
-The data for this sample pipeline has extension .parquet and .csv. See the .gitignore file
-for an example!
+**Do not** put your data into your Git repo. I only do that for demonstration purposes so I have a consistent path. The alternative for advanced students is to add the `data/` directory to `.gitignore`. At the root of your git repo, create a file `.gitignore` with the following line:
+
+`data/`
