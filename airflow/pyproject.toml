@@ -1,0 +1,14 @@
+[project]
+name = "msba405-sample-pipeline"
+version = "0.1.0"
+dependencies = [
+    "six",
+    "luigi",
+    "duckdb",
+    "apache-airflow",
+    "apache-airflow-providers-apache-spark"
+]
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"

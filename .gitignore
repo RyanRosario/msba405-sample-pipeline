@@ -16,3 +16,6 @@ output/
 *.db
 *.db.wal
 *.flag
+
+# Ignore python module files
+*.egg*
