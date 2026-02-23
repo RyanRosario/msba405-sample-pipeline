@@ -14,6 +14,10 @@ set -euo pipefail
 # ── Configuration (override via environment variables) ────────────────────────
 AIRFLOW_ADMIN_USER="${AIRFLOW_ADMIN_USER:-admin}"
 AIRFLOW_ADMIN_PASSWORD="${AIRFLOW_ADMIN_PASSWORD:?AIRFLOW_ADMIN_PASSWORD is required}"
+if [[ "$AIRFLOW_ADMIN_PASSWORD" == "changeme" ]]; then
+    echo "ERROR: AIRFLOW_ADMIN_PASSWORD is still set to 'changeme'. Update pipeline.env before running." >&2
+    exit 1
+fi
 AIRFLOW_ADMIN_EMAIL="${AIRFLOW_ADMIN_EMAIL:-admin@example.com}"
 AIRFLOW_VERSION="${AIRFLOW_VERSION:-3.1.7}"
 AIRFLOW_PORT="${AIRFLOW_PORT:-8080}"
@@ -37,12 +41,18 @@ source "$VENV_DIR/bin/activate"
 # ── Install Airflow ───────────────────────────────────────────────────────────
 echo ">>> Installing Airflow ${AIRFLOW_VERSION} (Python ${PYTHON_VERSION})..."
 pip install --quiet --upgrade pip
-pip install "apache-airflow==${AIRFLOW_VERSION}" apache-airflow-providers-apache-spark \
-    --constraint "$CONSTRAINT_URL"
+pip install -r requirements.txt --constraint "$CONSTRAINT_URL"
 
-# ── Initialize database ───────────────────────────────────────────────────────
+# ── Configure FAB as the auth manager ────────────────────────────────────────
+# Required in Airflow 3 — FAB was removed from core and must be explicitly set
+export AIRFLOW__CORE__AUTH_MANAGER="airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager"
+
+# ── Initialize databases ──────────────────────────────────────────────────────
 echo ">>> Initializing Airflow database..."
 airflow db migrate
+
+echo ">>> Initializing FAB database..."
+airflow fab-db migrate
 
 # ── Create admin user ─────────────────────────────────────────────────────────
 echo ">>> Creating admin user '${AIRFLOW_ADMIN_USER}'..."
@@ -72,6 +82,7 @@ After=network.target
 [Service]
 User=${CURRENT_USER}
 Environment="AIRFLOW_HOME=${AIRFLOW_HOME_DIR}"
+Environment="AIRFLOW__CORE__AUTH_MANAGER=airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager"
 ExecStart=${AIRFLOW_BIN} scheduler
 Restart=on-failure
 RestartSec=5s
@@ -90,6 +101,7 @@ After=network.target
 [Service]
 User=${CURRENT_USER}
 Environment="AIRFLOW_HOME=${AIRFLOW_HOME_DIR}"
+Environment="AIRFLOW__CORE__AUTH_MANAGER=airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager"
 ExecStart=${AIRFLOW_BIN} dag-processor
 Restart=on-failure
 RestartSec=5s
@@ -108,6 +120,7 @@ After=network.target
 [Service]
 User=${CURRENT_USER}
 Environment="AIRFLOW_HOME=${AIRFLOW_HOME_DIR}"
+Environment="AIRFLOW__CORE__AUTH_MANAGER=airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager"
 ExecStart=${AIRFLOW_BIN} api-server -p ${AIRFLOW_PORT}
 Restart=on-failure
 RestartSec=5s

@@ -7,6 +7,7 @@ dependencies = [
     "duckdb",
     "apache-airflow",
     "apache-airflow-providers-apache-spark",
+    "apache-airflow-providers-fab",
     "apache-airflow-providers-standard"
 ]
 

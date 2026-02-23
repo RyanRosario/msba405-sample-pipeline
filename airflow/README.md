@@ -10,27 +10,19 @@ python3 -m venv airflow
 source airflow/bin/activate
 ```
 
-Install Airflow using constraint files for a stable, reproducible installation:
+Install Airflow and all dependencies using the project's requirements file with constraint files for a stable, reproducible installation:
 
 ```bash
 AIRFLOW_VERSION=3.1.7
 PYTHON_VERSION="$(python --version | cut -d ' ' -f 2 | cut -d '.' -f 1-2)"
 CONSTRAINT_URL="https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${PYTHON_VERSION}.txt"
-pip install "apache-airflow==${AIRFLOW_VERSION}" \
-    apache-airflow-providers-apache-spark \
-    apache-airflow-providers-fab \
-    --constraint "$CONSTRAINT_URL"
+
+pip install -r requirements.txt --constraint "$CONSTRAINT_URL"
+# or, to install the project as a package:
+pip install -e . --constraint "$CONSTRAINT_URL"
 ```
 
-> `apache-airflow-providers-fab` is required in Airflow 3 to enable the `airflow users create` CLI command, which was removed from core.
-
-Or, if the project includes a `requirements.txt` or `setup.py`:
-
-```bash
-pip install -r requirements.txt
-# or
-pip install -e .
-```
+> `apache-airflow-providers-fab` is included in `requirements.txt` and `pyproject.toml`. It is required in Airflow 3 to enable `airflow users create`, which was removed from core.
 
 Set FAB as the auth manager (required in Airflow 3 to enable `airflow users` CLI commands):
 
@@ -174,4 +166,3 @@ Trigger a DAG run:
 ```bash
 airflow dags trigger name_of_dag
 ```
-
