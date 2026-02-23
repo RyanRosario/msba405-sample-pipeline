@@ -2,110 +2,161 @@
 
 ## Installation
 
-To install airflow:
+Install pip and create a virtual environment:
 
-`sudo apt-get install -y python3-pip python3-venv`
-
-Create a new virtual environment:
-
-```
+```bash
+sudo apt-get install -y python3-pip python3-venv
 python3 -m venv airflow
-source airflow/bin/activate 
+source airflow/bin/activate
 ```
 
-Install Airflow:
+Install Airflow using constraint files for a stable, reproducible installation:
 
+```bash
+AIRFLOW_VERSION=3.1.7
+PYTHON_VERSION="$(python --version | cut -d ' ' -f 2 | cut -d '.' -f 1-2)"
+CONSTRAINT_URL="https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${PYTHON_VERSION}.txt"
+pip install "apache-airflow==${AIRFLOW_VERSION}" apache-airflow-providers-apache-spark \
+    --constraint "$CONSTRAINT_URL"
 ```
+
+Or, if the project includes a `requirements.txt` or `setup.py`:
+
+```bash
 pip install -r requirements.txt
-- or-
+# or
 pip install -e .
 ```
 
-Initialize Airflow database:
+Initialize the database:
 
-```
-airflow db init
+```bash
+airflow db migrate
 ```
 
 Create an administrator:
 
-```
-airflow users create --role Admin --username admin --email admin --firstname admin --lastname admin --password my-password`
-```
-Run the Airflow job scheduler in the background. Airflow appends the output of running the scheduler to the scheduler.log file.:
-
-`nohup airflow scheduler > scheduler.log 2>&1 &`
-
-Open port 8080 in GCP security.
-
-Then start Airflow's web server.
-
-`nohup airflow webserver -p 8080 > webserver.log 2>&1 &`
-
-Install nginx, a web and application server.
-
-`sudo apt install nginx`
-
-Configure Nginx as a reverse proxy to serve Airflow:
-
-`sudo nano /etc/nginx/airflow.conf`
-
-Add the following to the file:
-
-```
- server {
-     listen 80;
-     server_name app-online.example.com;
-
-     location / {
-         proxy_pass http://localhost:8080;
-         proxy_set_header Host $host;
-         proxy_set_header X-Real-IP $remote_addr;
-         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-         proxy_set_header X-Forwarded-Proto $scheme;
-         proxy_set_header X-Frame-Options SAMEORIGIN;
-         proxy_buffers 16 4k;
-         proxy_buffer_size 2k;
-         proxy_busy_buffers_size 4k;
-     }
- }
+```bash
+airflow users create --role Admin --username admin --email admin --firstname admin --lastname admin --password my-password
 ```
 
-Replace `app-online.example.com` with your GCP/GCE hostname. There are others ways to do this within GCP.
+Ensure the DAGs directory exists:
 
-Test the Nginx configuration and fix any errors:
-
-```
-sudo nginx -t
+```bash
+mkdir -p $AIRFLOW_HOME/dags
 ```
 
-Restart Nginx to load changes.
+## Starting Airflow (systemd)
+
+Airflow 3 runs as three separate processes. Install them as systemd services so they
+survive reboots and restart automatically on failure.
+
+Create `/etc/systemd/system/airflow-scheduler.service`:
+
+```ini
+[Unit]
+Description=Airflow Scheduler
+After=network.target
+
+[Service]
+User=ubuntu
+Environment="AIRFLOW_HOME=/home/ubuntu/airflow"
+ExecStart=/home/ubuntu/airflow-venv/bin/airflow scheduler
+Restart=on-failure
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Create `/etc/systemd/system/airflow-dag-processor.service`:
+
+```ini
+[Unit]
+Description=Airflow DAG Processor
+After=network.target
+
+[Service]
+User=ubuntu
+Environment="AIRFLOW_HOME=/home/ubuntu/airflow"
+ExecStart=/home/ubuntu/airflow-venv/bin/airflow dag-processor
+Restart=on-failure
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Create `/etc/systemd/system/airflow-api-server.service`:
+
+```ini
+[Unit]
+Description=Airflow API Server
+After=network.target
+
+[Service]
+User=ubuntu
+Environment="AIRFLOW_HOME=/home/ubuntu/airflow"
+ExecStart=/home/ubuntu/airflow-venv/bin/airflow api-server -p 8080
+Restart=on-failure
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start all three services:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now airflow-scheduler airflow-dag-processor airflow-api-server
+```
+
+Open port 8080 in your GCP firewall rules, then access Airflow at:
 
 ```
-sudo systemctl restart nginx
+http://hostname:8080
 ```
-
-Access Airflow:
-
-`https://hostname:8080`
 
 where `hostname` comes from the GCE console, or from the instructor during the demo.
 
+Manage services:
+
+```bash
+sudo systemctl status  airflow-scheduler airflow-dag-processor airflow-api-server
+sudo systemctl restart airflow-scheduler airflow-dag-processor airflow-api-server
+sudo systemctl stop    airflow-scheduler airflow-dag-processor airflow-api-server
+```
+
+View logs:
+
+```bash
+journalctl -u airflow-scheduler     -f
+journalctl -u airflow-dag-processor -f
+journalctl -u airflow-api-server    -f
+```
+
 Source: https://docs.vultr.com/how-to-deploy-apache-airflow-on-ubuntu-20-04
+
+---
 
 ## Execution
 
-Once you have created a DAG, move it to Airflow's execution path:
+Once you have created a DAG, move it to Airflow's DAGs folder:
 
-```
-echo $AIRFLOW_HOME  # ~/airflow/dags is the default
-mv pipeline.py $AIRFLOW_HOME/
+```bash
+echo $AIRFLOW_HOME  # default: ~/airflow
+mv pipeline.py $AIRFLOW_HOME/dags/
 ```
 
-To start a run:
+Trigger a DAG run:
 
-```
+```bash
 airflow dags trigger name_of_dag
 ```
-
-
