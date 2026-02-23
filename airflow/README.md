@@ -16,9 +16,13 @@ Install Airflow using constraint files for a stable, reproducible installation:
 AIRFLOW_VERSION=3.1.7
 PYTHON_VERSION="$(python --version | cut -d ' ' -f 2 | cut -d '.' -f 1-2)"
 CONSTRAINT_URL="https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${PYTHON_VERSION}.txt"
-pip install "apache-airflow==${AIRFLOW_VERSION}" apache-airflow-providers-apache-spark \
+pip install "apache-airflow==${AIRFLOW_VERSION}" \
+    apache-airflow-providers-apache-spark \
+    apache-airflow-providers-fab \
     --constraint "$CONSTRAINT_URL"
 ```
+
+> `apache-airflow-providers-fab` is required in Airflow 3 to enable the `airflow users create` CLI command, which was removed from core.
 
 Or, if the project includes a `requirements.txt` or `setup.py`:
 
@@ -160,3 +164,4 @@ Trigger a DAG run:
 ```bash
 airflow dags trigger name_of_dag
 ```
+
