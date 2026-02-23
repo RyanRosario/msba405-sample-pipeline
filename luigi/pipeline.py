@@ -67,11 +67,42 @@ class SparkJobTask(luigi.Task):
 class LoadDuckDBTask(luigi.Task):
     loadpath = luigi.Parameter(default="../output/*.parquet")
     queries = '../duckdb/queries.sql'
-    duckdb_file = '../duckdb/final.db'
+
+    # UPDATED: Database now goes into the output folder
+    duckdb_file = '../output/final.db'
     output_dir = '../output'
-    
-    # This is the "Master Flag"
+
+    # Master flag remains in the duckdb folder for persistence
     final_success = '../duckdb/pipeline_complete.flag'
+
+    def requires(self):
+        return SparkJobTask()
+
+    def output(self):
+        return luigi.LocalTarget(self.final_success)
+
+    def run(self):
+        sql_file = os.path.abspath(self.queries)
+        db_path = os.path.abspath(self.duckdb_file)
+
+        with open(sql_file, "r") as f:
+            sql_script = f.read().replace("$LOADPATH", self.loadpath)
+
+        # 1. Load data into DuckDB inside the output folder
+        logger.info(f"📥 Loading results into DuckDB at: {db_path}")
+        con = duckdb.connect(database=db_path, read_only=False)
+        con.execute(sql_script)
+        con.close()
+
+        # 2. TARGETED CLEANUP: Only delete the .parquet files
+        # We NO LONGER use shutil.rmtree(self.output_dir) because that would delete final.db
+        logger.info(f"🗑️ Cleaning up intermediate Parquet files in {self.output_dir}")
+        for f in glob.glob(os.path.join(self.output_dir, "*.parquet")):
+            os.remove(f)
+
+        # 3. Write the final flag
+        with open(self.final_success, "w") as f:
+            f.write(f"Pipeline finished. DB at {self.duckdb_file} - {time.ctime()}")
 
     def requires(self):
         return SparkJobTask()
