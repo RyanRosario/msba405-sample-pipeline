@@ -11,7 +11,7 @@ OUTPUT=../output
 QUERIES=../duckdb/queries.sql
 
 # Data
-TAXI=../data/yellow_tripdata_2024-10.parquet
+TAXI=../data/fhvhv_tripdata_2024-*.parquet
 ZONE=../data/taxi_zone_lookup.csv
 WEATHER=../data/72505394728.csv
 
@@ -51,7 +51,7 @@ run_spark() {
 		--conf "spark.sql.shuffle.partitions=2" \
 		--name "NYC Taxi/Weather Analysis" \
 		$TRANSFORMER \
-    			$TAXI \
+    			"$TAXI" \
 		       	$ZONE \
 		       	$WEATHER \
 			$OUTPUT

@@ -4,6 +4,7 @@ import os
 import shutil
 import time
 import duckdb
+import subprocess  # Added for better command execution
 
 from luigi.contrib.spark import SparkSubmitTask
 
@@ -17,8 +18,7 @@ class InputFileTask(luigi.ExternalTask):
         return luigi.LocalTarget(self.path)
 
 class SparkJobTask(SparkSubmitTask):
-
-    taxi_data = '../data/yellow_tripdata_2024-10.parquet'
+    taxi_data = '../data/fhvhv_tripdata_2024-*.parquet'
     zone_data = '../data/taxi_zone_lookup.csv'
     weather_data = '../data/72505394728.csv'
     success_flag = '../output/_OKLUIGI'
@@ -26,48 +26,31 @@ class SparkJobTask(SparkSubmitTask):
     job = '../spark/spark-job.py'
 
     def requires(self):
-        input_files = [
-                self.taxi_data,
-                self.zone_data,
-                self.weather_data
+        return [
+                InputFileTask(path=self.zone_data),
+                InputFileTask(path=self.weather_data)
         ]
-        return [InputFileTask(path=f) for f in input_files]
 
     def output(self):
         return luigi.LocalTarget(self.success_flag)
 
     def complete(self):
-        """Force Luigi to check for _OKLUIGI instead of assuming the task is incomplete."""
-        if os.path.exists(self.success_flag):
-            return True
-        else:
-            return False
-
-    def remove_output(self):
-        """Ensure output directory is removed BEFORE execution"""
-        if os.path.exists(self.output_dir):
-            shutil.rmtree(self.output_dir)
-
-    def app_options(self):
-        """Pass the required command-line arguments to Spark job."""
-        return [
-                self.taxi_data,
-                self.zone_data,
-                self.weather_data,
-                self.output_dir
-        ]
+        # We only consider it complete if the flag exists AND the output dir exists
+        return os.path.exists(self.success_flag) and os.path.exists(self.output_dir)
 
     def run(self):
-        """Ensure output is deleted before running the Spark job and create _OKLUIGI after."""
-        self.remove_output()
+        # 1. Clean up old failed attempts
+        if os.path.exists(self.output_dir):
+            shutil.rmtree(self.output_dir)
+        if os.path.exists(self.success_flag):
+            os.remove(self.success_flag)
 
-        # Run Spark job
+        # 2. Build the command
         cmd = [
-            "/opt/spark/bin/spark-submit",
+            "spark-submit",
             "--master", "local[*]",
-            "--deploy-mode", "client",
-            "--name", '"NYC Taxi/Weather Analysis"',
             "--conf", "spark.sql.shuffle.partitions=2",
+            "--name", "NYC Taxi/Weather Analysis",
             self.job,
             self.taxi_data,
             self.zone_data,
@@ -75,74 +58,48 @@ class SparkJobTask(SparkSubmitTask):
             self.output_dir
         ]
 
-        os.system(" ".join(cmd))
+        logger.info(f"🚀 Launching Spark: {' '.join(cmd)}")
 
-        with open(self.success_flag, "w") as f:
-            f.write("Spark Job Completed")
-
-        if os.path.exists(self.success_flag):
-            logger.info(f"✅ _OKLUIGI successfully created:{ self.success_flag}")
-        else:
-            logger.error(f"❌ Failed to create _OKLUIGI:{ self.success_flag}")
-
+        try:
+            # 3. Use subprocess.run with check=True to catch non-zero exit codes
+            subprocess.run(cmd, check=True)
+            
+            # 4. Only write success flag if we get here
+            with open(self.success_flag, "w") as f:
+                f.write(f"Completed at {time.ctime()}")
+            logger.info("✅ Spark transformation finished successfully.")
+            
+        except subprocess.CalledProcessError as e:
+            logger.error(f"❌ Spark job failed with exit code {e.returncode}")
+            # Re-raise so Luigi knows this task actually failed
+            raise e
 
 class LoadDuckDBTask(luigi.Task):
-    """Loads the Spark output into DuckDB"""
-
     loadpath = luigi.Parameter(default="../output/*.parquet")
     queries = '../duckdb/queries.sql'
-    duckdb = '../duckdb/final.db'
-    spark_success = '../output/_OKLUIGI'
+    duckdb_file = '../duckdb/final.db'
     duckdb_success = '../output/duckdb_loaded.flag'
 
     def requires(self):
-        """Ensure Spark processing completes first"""
         return SparkJobTask()
 
     def output(self):
-        """Check for a flag file to track successful execution"""
         return luigi.LocalTarget(self.duckdb_success)
 
     def run(self):
-        """Ensure Spark job completed by checking for _OKLUIGI before executing SQL."""
+        sql_file = os.path.abspath(self.queries)
+        db_path = os.path.abspath(self.duckdb_file)
 
-        spark_success_file = os.path.abspath(self.spark_success)  # Convert to absolute path
-        sql_file = os.path.abspath(self.queries)  # Convert to absolute path
-        db_path = os.path.abspath(self.duckdb)  # Convert to absolute path
-
-        # Debug log: Confirm execution
-        logger.info(f"🔍 Checking for {self.spark_success} before running DuckDB job...")
-
-        # Ensure the file system sees _OKLUIGI before proceeding
-        time.sleep(5)  # Extra delay to prevent file system sync issues
-
-        # Check for _OKLUIGI explicitly
-        if not os.path.exists(spark_success_file):
-            raise RuntimeError(f"Expected file not found: {self.spark_success}")
-
-        # Read and replace $LOADPATH in SQL before execution
         with open(sql_file, "r") as f:
             sql_script = f.read().replace("$LOADPATH", self.loadpath)
 
-        # Connect to DuckDB and execute the script
+        logger.info(f"📥 Loading results into DuckDB: {db_path}")
         con = duckdb.connect(database=db_path, read_only=False)
         con.execute(sql_script)
         con.close()
 
-        logger.info("✅ DuckDB data load completed successfully!")
-
-        # Create a flag file to indicate successful execution
         with open(self.output().path, "w") as f:
-            f.write("DuckDB Load Successful")
+            f.write("Success")
 
 if __name__ == "__main__":
-    logger.info("Starting example pipeline...")
-
-    luigi.build(
-        [LoadDuckDBTask()],  # The final task that triggers everything
-        local_scheduler=False,  # Run without a central Luigi scheduler
-        workers=1,  # Number of concurrent workers
-        no_lock=True  # Avoid lock issues
-    )
-
-    logger.info("Pipeline execution completed successfully.")
+    luigi.build([LoadDuckDBTask()], local_scheduler=True, workers=1)
