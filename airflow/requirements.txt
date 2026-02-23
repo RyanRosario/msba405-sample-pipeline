@@ -1,2 +1,6 @@
 apache-airflow
 apache-airflow-providers-apache-spark
+apache-airflow-providers-standard
+duckdb
+luigi
+six

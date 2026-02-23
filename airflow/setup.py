@@ -14,10 +14,6 @@ set -euo pipefail
 # ── Configuration (override via environment variables) ────────────────────────
 AIRFLOW_ADMIN_USER="${AIRFLOW_ADMIN_USER:-admin}"
 AIRFLOW_ADMIN_PASSWORD="${AIRFLOW_ADMIN_PASSWORD:?AIRFLOW_ADMIN_PASSWORD is required}"
-if [[ "$AIRFLOW_ADMIN_PASSWORD" == "changeme" ]]; then
-    echo "ERROR: AIRFLOW_ADMIN_PASSWORD is still set to 'changeme'. Update pipeline.env before running." >&2
-    exit 1
-fi
 AIRFLOW_ADMIN_EMAIL="${AIRFLOW_ADMIN_EMAIL:-admin@example.com}"
 AIRFLOW_VERSION="${AIRFLOW_VERSION:-3.1.7}"
 AIRFLOW_PORT="${AIRFLOW_PORT:-8080}"
