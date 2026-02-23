@@ -1,68 +1,74 @@
 from airflow import DAG
-from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
 from airflow.operators.bash import BashOperator
 from datetime import datetime
+import os
 
-# File paths
-SPARK_SCRIPT_PATH = "../spark/spark-job.py"
-TAXI_PATH = "../data/yellow_tripdata_2024-10.parquet"
-ZONE_PATH = "../data/taxi_zone_lookup.csv"
-WEATHER_PATH = "../data/72505394728.csv"
-OUTPUT_PATH = "../output"
-DUCKDB_EXECUTABLE = "duckdb"  # Path to DuckDB executable
-DUCKDB_DATABASE = "../duckdb/final.db"
-DUCKDB_QUERIES = "../duckdb/queries.sql"
+# ── Paths (set in .env, loaded into environment before starting Airflow) ──────
+BASE_DIR        = os.environ["PIPELINE_BASE_DIR"]        # e.g. /home/ubuntu/final/taxi/msba405-sample-pipeline
+SPARK_SCRIPT    = os.path.join(BASE_DIR, "spark/spark-job.py")
+DATA_DIR        = os.path.join(BASE_DIR, "data")
+ZONE_DATA       = os.path.join(DATA_DIR, "taxi_zone_lookup.csv")
+WEATHER_DATA    = os.path.join(DATA_DIR, "72505394728.csv")
+OUTPUT_DIR      = os.path.join(BASE_DIR, "output")
+DUCKDB_BIN      = os.environ.get("DUCKDB_EXECUTABLE", "duckdb")
+DUCKDB_DATABASE = os.path.join(BASE_DIR, os.environ.get("DUCKDB_DATABASE", "duckdb/final.db"))
+DUCKDB_QUERIES  = os.path.join(BASE_DIR, os.environ.get("DUCKDB_QUERIES",  "duckdb/queries.sql"))
 
-# Define DAG arguments
+MONTHS = [f"2024-{m:02d}" for m in range(1, 13)]  # 2024-01 through 2024-12
+
+# ── DAG definition ────────────────────────────────────────────────────────────
 default_args = {
     'owner': 'airflow',
-    'start_date': datetime(2024, 2, 23),
+    'start_date': datetime(2024, 1, 1),
     'retries': 1,
 }
 
-# Define DAG
 dag = DAG(
-    'spark_to_duckdb',
+    'fhvhv_spark_to_duckdb',
     default_args=default_args,
-    schedule_interval='@daily',
-    catchup=False
-    # If N runs fail, catchup=True will rerun each of them.
-    # If False, it will skip them.
+    schedule_interval=None,  # Trigger manually; all 12 months are a one-shot batch
+    catchup=False,
 )
 
-# Task 1: Run Spark job using BashOperator
-spark_submit_task = BashOperator(
-    task_id='run_spark_job',
-    # Add pwd to see working directory
-    bash_command='''
-        pwd &&
-        echo "Current directory contents:" &&
-        ls -la &&
-        echo "Trying to run spark-submit..." &&
-        spark-submit --master local[*] \
-            --driver-memory 2g \
-            --executor-memory 2g \
-            --conf spark.sql.shuffle.partitions=4 \
-            spark/spark-job.py \
-            data/yellow_tripdata_2024-10.parquet \
-            data/taxi_zone_lookup.csv \
-            data/72505394728.csv \
-            output
-    ''',
-    # This will show stderr in logs
-    cwd="/home/ubuntu/final/taxi/msba405-sample-pipeline",  # Set working directory
-    dag=dag,
-)
+# ── Build one Spark task per month ────────────────────────────────────────────
+spark_tasks = []
 
-# Task 2: Load Parquet into DuckDB using BashOperator
+for month in MONTHS:
+    parquet_file = os.path.join(DATA_DIR, f"fhvhv_tripdata_{month}.parquet")
+    month_output = os.path.join(OUTPUT_DIR, month)
+
+    task = BashOperator(
+        task_id=f"spark_{month.replace('-', '_')}",
+        bash_command=f'''
+            mkdir -p {month_output} &&
+            spark-submit --master local[*] \
+                --driver-memory 2g \
+                --executor-memory 2g \
+                --conf spark.sql.shuffle.partitions=4 \
+                {SPARK_SCRIPT} \
+                {parquet_file} \
+                {ZONE_DATA} \
+                {WEATHER_DATA} \
+                {month_output}
+        ''',
+        cwd=BASE_DIR,
+        dag=dag,
+    )
+    spark_tasks.append(task)
+
+# ── Final task: load all monthly output into DuckDB ───────────────────────────
 load_duckdb_task = BashOperator(
     task_id='load_parquet_into_duckdb',
     bash_command=f'''
-        LOADPATH="{OUTPUT_PATH}/*.parquet" &&
-        sed "s|\\$LOADPATH|${{LOADPATH//\//\\/}}|g" "{DUCKDB_QUERIES}" | {DUCKDB_EXECUTABLE} "{DUCKDB_DATABASE}"
+        LOADPATH="{OUTPUT_DIR}/*/*.parquet" &&
+        sed "s|\\$LOADPATH|${{LOADPATH//\//\\/}}|g" "{DUCKDB_QUERIES}" | {DUCKDB_BIN} "{DUCKDB_DATABASE}"
     ''',
-    dag=dag
+    cwd=BASE_DIR,
+    dag=dag,
 )
 
-# Set task dependencies
-spark_submit_task >> load_duckdb_task
+# ── Chain: Jan >> Feb >> ... >> Dec >> DuckDB ─────────────────────────────────
+for upstream, downstream in zip(spark_tasks, spark_tasks[1:]):
+    upstream >> downstream
+
+spark_tasks[-1] >> load_duckdb_task
