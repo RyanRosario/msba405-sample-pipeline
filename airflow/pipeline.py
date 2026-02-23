@@ -1,141 +1,68 @@
-#!/bin/bash
-# Airflow 3.x installation and startup script
-#
-# Configure via environment variables before running:
-#
-#   export AIRFLOW_ADMIN_PASSWORD="changeme"
-#   export AIRFLOW_ADMIN_USER="admin"
-#   export AIRFLOW_ADMIN_EMAIL="admin@example.com"
-#   export AIRFLOW_VERSION="3.1.7"
-#   bash install_airflow.sh
+from airflow import DAG
+from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
+from airflow.operators.bash import BashOperator
+from datetime import datetime
 
-set -euo pipefail
+# File paths
+SPARK_SCRIPT_PATH = "../spark/spark-job.py"
+TAXI_PATH = "../data/yellow_tripdata_2024-10.parquet"
+ZONE_PATH = "../data/taxi_zone_lookup.csv"
+WEATHER_PATH = "../data/72505394728.csv"
+OUTPUT_PATH = "../output"
+DUCKDB_EXECUTABLE = "duckdb"  # Path to DuckDB executable
+DUCKDB_DATABASE = "../duckdb/final.db"
+DUCKDB_QUERIES = "../duckdb/queries.sql"
 
-# ── Configuration (override via environment variables) ────────────────────────
-AIRFLOW_ADMIN_USER="${AIRFLOW_ADMIN_USER:-admin}"
-AIRFLOW_ADMIN_PASSWORD="${AIRFLOW_ADMIN_PASSWORD:?AIRFLOW_ADMIN_PASSWORD is required}"
-if [[ "$AIRFLOW_ADMIN_PASSWORD" == "changeme" ]]; then
-    echo "ERROR: AIRFLOW_ADMIN_PASSWORD is still set to 'changeme'. Update pipeline.env before running." >&2
-    exit 1
-fi
-AIRFLOW_ADMIN_EMAIL="${AIRFLOW_ADMIN_EMAIL:-admin@example.com}"
-AIRFLOW_VERSION="${AIRFLOW_VERSION:-3.1.7}"
-AIRFLOW_PORT="${AIRFLOW_PORT:-8080}"
-VENV_DIR="${VENV_DIR:-$HOME/airflow-venv}"
+# Define DAG arguments
+default_args = {
+    'owner': 'airflow',
+    'start_date': datetime(2024, 2, 23),
+    'retries': 1,
+}
 
-# ── Derived ───────────────────────────────────────────────────────────────────
-PYTHON_VERSION="$(python3 --version | cut -d ' ' -f 2 | cut -d '.' -f 1-2)"
-CONSTRAINT_URL="https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${PYTHON_VERSION}.txt"
+# Define DAG
+dag = DAG(
+    'spark_to_duckdb',
+    default_args=default_args,
+    schedule_interval='@daily',
+    catchup=False
+    # If N runs fail, catchup=True will rerun each of them.
+    # If False, it will skip them.
+)
 
-# ── Install system dependencies ───────────────────────────────────────────────
-echo ">>> Installing system dependencies..."
-sudo apt-get update -q
-sudo apt-get install -y python3-pip python3-venv
+# Task 1: Run Spark job using BashOperator
+spark_submit_task = BashOperator(
+    task_id='run_spark_job',
+    # Add pwd to see working directory
+    bash_command='''
+        pwd &&
+        echo "Current directory contents:" &&
+        ls -la &&
+        echo "Trying to run spark-submit..." &&
+        spark-submit --master local[*] \
+            --driver-memory 2g \
+            --executor-memory 2g \
+            --conf spark.sql.shuffle.partitions=4 \
+            spark/spark-job.py \
+            data/yellow_tripdata_2024-10.parquet \
+            data/taxi_zone_lookup.csv \
+            data/72505394728.csv \
+            output
+    ''',
+    # This will show stderr in logs
+    cwd="/home/ubuntu/final/taxi/msba405-sample-pipeline",  # Set working directory
+    dag=dag,
+)
 
-# ── Create virtual environment ────────────────────────────────────────────────
-echo ">>> Creating virtual environment at ${VENV_DIR}..."
-python3 -m venv "$VENV_DIR"
-# shellcheck disable=SC1091
-source "$VENV_DIR/bin/activate"
+# Task 2: Load Parquet into DuckDB using BashOperator
+load_duckdb_task = BashOperator(
+    task_id='load_parquet_into_duckdb',
+    bash_command=f'''
+        LOADPATH="{OUTPUT_PATH}/*.parquet" &&
+        sed "s|\\$LOADPATH|${{LOADPATH//\//\\/}}|g" "{DUCKDB_QUERIES}" | {DUCKDB_EXECUTABLE} "{DUCKDB_DATABASE}"
+    ''',
+    dag=dag
+)
 
-# ── Install Airflow ───────────────────────────────────────────────────────────
-echo ">>> Installing Airflow ${AIRFLOW_VERSION} (Python ${PYTHON_VERSION})..."
-pip install --quiet --upgrade pip
-pip install "apache-airflow==${AIRFLOW_VERSION}" apache-airflow-providers-apache-spark \
-    --constraint "$CONSTRAINT_URL"
-
-# ── Initialize database ───────────────────────────────────────────────────────
-echo ">>> Initializing Airflow database..."
-airflow db migrate
-
-# ── Create admin user ─────────────────────────────────────────────────────────
-echo ">>> Creating admin user '${AIRFLOW_ADMIN_USER}'..."
-airflow users create \
-    --role Admin \
-    --username "$AIRFLOW_ADMIN_USER" \
-    --email "$AIRFLOW_ADMIN_EMAIL" \
-    --firstname admin \
-    --lastname admin \
-    --password "$AIRFLOW_ADMIN_PASSWORD"
-
-# ── Ensure DAGs directory exists ──────────────────────────────────────────────
-mkdir -p "${AIRFLOW_HOME:-$HOME/airflow}/dags"
-
-# ── Create systemd service files ──────────────────────────────────────────────
-AIRFLOW_BIN="$VENV_DIR/bin/airflow"
-CURRENT_USER="$(whoami)"
-AIRFLOW_HOME_DIR="${AIRFLOW_HOME:-$HOME/airflow}"
-
-echo ">>> Creating systemd service files..."
-
-sudo tee /etc/systemd/system/airflow-scheduler.service > /dev/null <<EOF
-[Unit]
-Description=Airflow Scheduler
-After=network.target
-
-[Service]
-User=${CURRENT_USER}
-Environment="AIRFLOW_HOME=${AIRFLOW_HOME_DIR}"
-ExecStart=${AIRFLOW_BIN} scheduler
-Restart=on-failure
-RestartSec=5s
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-sudo tee /etc/systemd/system/airflow-dag-processor.service > /dev/null <<EOF
-[Unit]
-Description=Airflow DAG Processor
-After=network.target
-
-[Service]
-User=${CURRENT_USER}
-Environment="AIRFLOW_HOME=${AIRFLOW_HOME_DIR}"
-ExecStart=${AIRFLOW_BIN} dag-processor
-Restart=on-failure
-RestartSec=5s
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-sudo tee /etc/systemd/system/airflow-api-server.service > /dev/null <<EOF
-[Unit]
-Description=Airflow API Server
-After=network.target
-
-[Service]
-User=${CURRENT_USER}
-Environment="AIRFLOW_HOME=${AIRFLOW_HOME_DIR}"
-ExecStart=${AIRFLOW_BIN} api-server -p ${AIRFLOW_PORT}
-Restart=on-failure
-RestartSec=5s
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-# ── Enable and start services ─────────────────────────────────────────────────
-echo ">>> Enabling and starting Airflow services..."
-sudo systemctl daemon-reload
-sudo systemctl enable --now airflow-scheduler airflow-dag-processor airflow-api-server
-
-echo ""
-echo "✓ Airflow is running at http://$(hostname):${AIRFLOW_PORT}"
-echo ""
-echo "  Manage services with:"
-echo "    sudo systemctl status  airflow-scheduler airflow-dag-processor airflow-api-server"
-echo "    sudo systemctl restart airflow-scheduler airflow-dag-processor airflow-api-server"
-echo "    sudo systemctl stop    airflow-scheduler airflow-dag-processor airflow-api-server"
-echo ""
-echo "  View logs with:"
-echo "    journalctl -u airflow-scheduler     -f"
-echo "    journalctl -u airflow-dag-processor -f"
-echo "    journalctl -u airflow-api-server    -f"
+# Set task dependencies
+spark_submit_task >> load_duckdb_task
