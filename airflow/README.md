@@ -24,7 +24,7 @@ pip install -e . --constraint "$CONSTRAINT_URL"
 
 > `apache-airflow-providers-fab` is included in `requirements.txt` and `pyproject.toml`. It is required in Airflow 3 to enable `airflow users create`, which was removed from core.
 
-Set FAB as the auth manager (required in Airflow 3 to enable `airflow users` CLI commands):
+Set FAB as the auth manager (required in Airflow 3):
 
 ```bash
 export AIRFLOW__CORE__AUTH_MANAGER="airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager"
@@ -51,8 +51,7 @@ mkdir -p $AIRFLOW_HOME/dags
 
 ## Starting Airflow (systemd)
 
-Airflow 3 runs as three separate processes. Install them as systemd services so they
-survive reboots and restart automatically on failure.
+Airflow 3 runs as three separate processes. Install them as systemd services so they survive reboots and restart automatically on failure.
 
 Create `/etc/systemd/system/airflow-scheduler.service`:
 
@@ -124,13 +123,11 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now airflow-scheduler airflow-dag-processor airflow-api-server
 ```
 
-Open port 8080 in your GCP firewall rules, then access Airflow at:
+Open port 8080 in EC2 security, then access Airflow at:
 
 ```
 http://hostname:8080
 ```
-
-where `hostname` comes from the GCE console, or from the instructor during the demo.
 
 Manage services:
 
