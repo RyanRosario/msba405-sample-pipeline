@@ -1,7 +1,7 @@
 # Sample MSBA 405 Pipeline (Final Project)
 # Pipeline to Power NYC Taxi vs Weather Analysis
 
-**Note:** Do not use this pipeline exactly as is if your project uses these datasets. Focus on other analyses.
+**Note:** Do not use this pipeline exactly as is if your project uses these datasets. Focus on other analyses so that it is interesting.
 
 In the `README.md`you must provide enough information for us to download the dataset
 and run the pipeline on our own machines.
