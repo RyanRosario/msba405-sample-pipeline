@@ -50,6 +50,8 @@ Ensure the DAGs directory exists:
 mkdir -p $AIRFLOW_HOME/dags
 ```
 
+---
+
 ## Starting Airflow (systemd)
 
 Airflow 3 runs as three separate processes. Install them as systemd services so they survive reboots and restart automatically on failure.
@@ -110,7 +112,7 @@ User=${USER}
 Environment="AIRFLOW_HOME=${HOME}/airflow"
 EnvironmentFile=${PIPELINE_DIR}/pipeline.env
 Environment="AIRFLOW__CORE__AUTH_MANAGER=airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager"
-ExecStart=${AIRFLOW_BIN} api-server -p 8080
+ExecStart=${AIRFLOW_BIN} api-server -p 8080 --apps all
 Restart=on-failure
 RestartSec=5s
 StandardOutput=journal
@@ -124,13 +126,17 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now airflow-scheduler airflow-dag-processor airflow-api-server
 ```
 
+> **Note:** `--apps all` is required on the api-server so that the execution API is available for the scheduler to dispatch tasks.
+
 Open port 8080 in your GCP firewall rules, then access Airflow at:
 
 ```
-http://hostname:8080
+http://<external-ip>:8080
 ```
 
-where `hostname` comes from the GCE console, or from the instructor during the demo.
+Find your external IP with `curl ifconfig.me`. Do not use the domain name directly — it may force HTTPS and cause a connection error.
+
+Log in with the admin username and password set in `pipeline.env`.
 
 Manage services:
 
@@ -154,10 +160,9 @@ Source: https://docs.vultr.com/how-to-deploy-apache-airflow-on-ubuntu-20-04
 
 ## Execution
 
-Once you have created a DAG, copy it to Airflow's DAGs folder:
+Copy the DAG to Airflow's DAGs folder:
 
 ```bash
-echo $AIRFLOW_HOME  # default: ~/airflow
 cp pipeline.py $AIRFLOW_HOME/dags/
 ```
 
@@ -168,8 +173,77 @@ airflow dags list
 airflow dags list-import-errors
 ```
 
+Airflow 3 pauses new DAGs by default. Unpause before triggering:
+
+```bash
+airflow dags unpause fhvhv_spark_to_duckdb
+```
+
 Trigger a DAG run:
 
 ```bash
 airflow dags trigger fhvhv_spark_to_duckdb
+```
+
+Check the run status:
+
+```bash
+airflow dags list-runs -d fhvhv_spark_to_duckdb
+```
+
+---
+
+## Troubleshooting
+
+**DAG not showing up after `cp pipeline.py $AIRFLOW_HOME/dags/`**
+
+Check for import errors:
+
+```bash
+airflow dags list-import-errors
+```
+
+Check the dag-processor is running:
+
+```bash
+sudo systemctl status airflow-dag-processor
+journalctl -u airflow-dag-processor -n 50
+```
+
+**Tasks stuck in `queued` state**
+
+First check if the DAG is paused:
+
+```bash
+airflow dags unpause fhvhv_spark_to_duckdb
+```
+
+Check that the api-server is serving the execution API:
+
+```bash
+curl http://localhost:8080/execution/health
+```
+
+If this returns `Not Found`, the api-server is not running with `--apps all`. Re-run the systemd setup commands above, which include `--apps all` in the `ExecStart` for `airflow-api-server`.
+
+Check all three services are running:
+
+```bash
+sudo systemctl status airflow-scheduler airflow-dag-processor airflow-api-server
+```
+
+**Browser shows SSL error when accessing the UI**
+
+Use the raw external IP instead of the domain name:
+
+```bash
+curl ifconfig.me  # get your external IP
+```
+
+Then go to `http://<external-ip>:8080` — the domain may have HSTS enabled which forces HTTPS.
+
+**Forgot admin password**
+
+```bash
+airflow users reset-password --username admin --password newpassword
 ```

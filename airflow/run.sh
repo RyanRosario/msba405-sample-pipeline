@@ -11,8 +11,6 @@
 
 set -euo pipefail
 
-# RUN THIS AT YOUR OWN RISK. IT IS BETTER TO FOLLOW README.md
-
 # ── Configuration (override via environment variables) ────────────────────────
 AIRFLOW_ADMIN_USER="${AIRFLOW_ADMIN_USER:-admin}"
 AIRFLOW_ADMIN_PASSWORD="${AIRFLOW_ADMIN_PASSWORD:?AIRFLOW_ADMIN_PASSWORD is required}"
@@ -127,7 +125,7 @@ User=${CURRENT_USER}
 Environment="AIRFLOW_HOME=${AIRFLOW_HOME_DIR}"
 EnvironmentFile=${PIPELINE_DIR}/pipeline.env
 Environment="AIRFLOW__CORE__AUTH_MANAGER=airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager"
-ExecStart=${AIRFLOW_BIN} api-server -p ${AIRFLOW_PORT}
+ExecStart=${AIRFLOW_BIN} api-server -p ${AIRFLOW_PORT} --apps all
 Restart=on-failure
 RestartSec=5s
 StandardOutput=journal
