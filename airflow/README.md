@@ -6,42 +6,31 @@ Install pip and create a virtual environment:
 
 ```bash
 sudo apt-get install -y python3-pip python3-venv
-python3 -m venv airflow
-source airflow/bin/activate
+python3 -m venv airflow-env
+source airflow-env/bin/activate
 ```
 
 Install Airflow and all dependencies using the project's requirements file with constraint files for a stable, reproducible installation:
 
 ```bash
 AIRFLOW_VERSION=3.1.7
+AIRFLOW_HOME=~/airflow
 PYTHON_VERSION="$(python --version | cut -d ' ' -f 2 | cut -d '.' -f 1-2)"
 CONSTRAINT_URL="https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${PYTHON_VERSION}.txt"
 
 pip install -r requirements.txt --constraint "$CONSTRAINT_URL"
 # or, to install the project as a package:
-pip install -e . --constraint "$CONSTRAINT_URL"
+# pip install -e . --constraint "$CONSTRAINT_URL"
 ```
 
 > `apache-airflow-providers-fab` is included in `requirements.txt` and `pyproject.toml`. It is required in Airflow 3 to enable `airflow users create`, which was removed from core.
 
 Set required environment variables (or load via `set -a && source pipeline.env && set +a`):
 
-```bash
-export AIRFLOW_HOME=~/airflow
-export AIRFLOW__CORE__AUTH_MANAGER="airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager"
-```
-
-Initialize the Airflow and FAB databases:
+Initialize the Airflow databases:
 
 ```bash
 airflow db migrate
-airflow fab-db migrate
-```
-
-Create an administrator:
-
-```bash
-airflow users create --role Admin --username admin --email admin --firstname admin --lastname admin --password my-password
 ```
 
 Ensure the DAGs directory exists:
@@ -71,7 +60,6 @@ After=network.target
 User=${USER}
 Environment="AIRFLOW_HOME=${HOME}/airflow"
 EnvironmentFile=${PIPELINE_DIR}/pipeline.env
-Environment="AIRFLOW__CORE__AUTH_MANAGER=airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager"
 ExecStart=${AIRFLOW_BIN} scheduler
 Restart=on-failure
 RestartSec=5s
@@ -91,7 +79,6 @@ After=network.target
 User=${USER}
 Environment="AIRFLOW_HOME=${HOME}/airflow"
 EnvironmentFile=${PIPELINE_DIR}/pipeline.env
-Environment="AIRFLOW__CORE__AUTH_MANAGER=airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager"
 ExecStart=${AIRFLOW_BIN} dag-processor
 Restart=on-failure
 RestartSec=5s
@@ -111,7 +98,6 @@ After=network.target
 User=${USER}
 Environment="AIRFLOW_HOME=${HOME}/airflow"
 EnvironmentFile=${PIPELINE_DIR}/pipeline.env
-Environment="AIRFLOW__CORE__AUTH_MANAGER=airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager"
 ExecStart=${AIRFLOW_BIN} api-server -p 8080 --apps all
 Restart=on-failure
 RestartSec=5s
@@ -188,7 +174,7 @@ airflow dags trigger fhvhv_spark_to_duckdb
 Check the run status:
 
 ```bash
-airflow dags list-runs -d fhvhv_spark_to_duckdb
+airflow dags list-runs fhvhv_spark_to_duckdb
 ```
 
 ---
@@ -245,5 +231,5 @@ Then go to `http://<external-ip>:8080` — the domain may have HSTS enabled whic
 **Forgot admin password**
 
 ```bash
-airflow users reset-password --username admin --password newpassword
+airflow users reset-password --username admin
 ```
