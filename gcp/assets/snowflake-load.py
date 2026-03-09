@@ -32,7 +32,7 @@ def validate_staging(cur) -> None:
 
 def cleanup_staging(cur, snowflake_dir: Path) -> None:
     print("\nCleaning up Snowflake staging objects...\n")
-    run_sql_file(cur, snowflake_dir / "cleanup-staging.sql")
+    run_sql_file(cur, snowflake_dir / "cleanup_staging.sql")
 
 
 def main() -> None:
@@ -51,20 +51,19 @@ def main() -> None:
     try:
         with conn.cursor() as cur:
             run_sql_file(cur, snowflake_dir / "load-from-gcs.sql")
-            run_sql_file(cur, snowflake_dir / "views.sql")
             validate_staging(cur)
             run_sql_file(cur, snowflake_dir / "promote-staging.sql")
-            cleanup_staging(cur, snowflake_dir)
+            run_sql_file(cur, snowflake_dir / "views.sql")
+            run_sql_file(cur, snowflake_dir / "cleanup-staging.sql")
     except Exception:
         try:
             with conn.cursor() as cur:
-                cleanup_staging(cur, snowflake_dir)
+                run_sql_file(cur, snowflake_dir / "cleanup-staging.sql")
         except Exception as cleanup_error:
             print(f"Failed to clean up staging objects: {cleanup_error}")
         raise
     finally:
         conn.close()
-
 
 if __name__ == "__main__":
     main()

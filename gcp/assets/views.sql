@@ -3,10 +3,9 @@ USE SCHEMA PUBLIC;
 USE WAREHOUSE FINAL;
 
 /* ============================================================
-   Tableau Base View (Staging)
+   Tableau Base View
    ============================================================ */
-
-CREATE OR REPLACE VIEW TABLEAU_RIDES_BASE_STAGING AS
+CREATE OR REPLACE VIEW TABLEAU_RIDES_BASE AS
 SELECT
     pickup_datetime,
     pickup_hour,
@@ -26,14 +25,12 @@ SELECT
     temperature,
     condition,
     severity
-FROM RIDES_RAW_STAGING;
-
+FROM RIDES_RAW;
 
 /* ============================================================
    Time Series: Number of Rides Over Time (Hourly)
    ============================================================ */
-
-CREATE OR REPLACE VIEW TABLEAU_RIDES_OVER_TIME_STAGING AS
+CREATE OR REPLACE VIEW TABLEAU_RIDES_OVER_TIME AS
 SELECT
     DATE_TRUNC('hour', pickup_datetime) AS ts_hour,
     COUNT(*) AS total_rides,
@@ -42,16 +39,14 @@ SELECT
     AVG(fare_amount) AS avg_fare,
     AVG(total_amount) AS avg_total_amount,
     SUM(total_amount) AS total_revenue
-FROM RIDES_RAW_STAGING
+FROM RIDES_RAW
 GROUP BY DATE_TRUNC('hour', pickup_datetime)
 ORDER BY ts_hour;
-
 
 /* ============================================================
    Time Series: Number of Rides Per Day
    ============================================================ */
-
-CREATE OR REPLACE VIEW TABLEAU_RIDES_OVER_DAY_STAGING AS
+CREATE OR REPLACE VIEW TABLEAU_RIDES_OVER_DAY AS
 SELECT
     DATE_TRUNC('day', pickup_datetime) AS ts_day,
     COUNT(*) AS total_rides,
@@ -60,22 +55,20 @@ SELECT
     AVG(fare_amount) AS avg_fare,
     AVG(total_amount) AS avg_total_amount,
     SUM(total_amount) AS total_revenue
-FROM RIDES_RAW_STAGING
+FROM RIDES_RAW
 GROUP BY DATE_TRUNC('day', pickup_datetime)
 ORDER BY ts_day;
-
 
 /* ============================================================
    Bar Chart: Average Rides Per Day of Week
    ============================================================ */
-
-CREATE OR REPLACE VIEW TABLEAU_AVG_RIDES_PER_DAY_OF_WEEK_STAGING AS
+CREATE OR REPLACE VIEW TABLEAU_AVG_RIDES_PER_DAY_OF_WEEK AS
 WITH daily_counts AS (
     SELECT
         DATE_TRUNC('day', pickup_datetime) AS pickup_date,
         DAYNAME(pickup_datetime) AS dow,
         COUNT(*) AS daily_rides
-    FROM RIDES_RAW_STAGING
+    FROM RIDES_RAW
     GROUP BY
         DATE_TRUNC('day', pickup_datetime),
         DAYNAME(pickup_datetime)
@@ -88,12 +81,10 @@ SELECT
 FROM daily_counts
 GROUP BY dow;
 
-
 /* ============================================================
    Bar Chart: Rides by Weather Condition
    ============================================================ */
-
-CREATE OR REPLACE VIEW TABLEAU_RIDES_BY_WEATHER_STAGING AS
+CREATE OR REPLACE VIEW TABLEAU_RIDES_BY_WEATHER AS
 SELECT
     COALESCE(condition, 'Unknown') AS condition,
     COALESCE(severity, 'Unknown') AS severity,
@@ -101,18 +92,16 @@ SELECT
     AVG(trip_distance) AS avg_distance,
     AVG(fare_amount) AS avg_fare,
     AVG(total_amount) AS avg_total_amount
-FROM RIDES_RAW_STAGING
+FROM RIDES_RAW
 GROUP BY
     COALESCE(condition, 'Unknown'),
     COALESCE(severity, 'Unknown')
 ORDER BY total_rides DESC;
 
-
 /* ============================================================
    Scatter Plot: Precipitation vs Taxi Rides
    ============================================================ */
-
-CREATE OR REPLACE VIEW TABLEAU_PRECIPITATION_VS_RIDES_STAGING AS
+CREATE OR REPLACE VIEW TABLEAU_PRECIPITATION_VS_RIDES AS
 SELECT
     pickup_hour,
     condition,
@@ -121,7 +110,7 @@ SELECT
     COUNT(*) AS total_rides,
     AVG(trip_distance) AS avg_distance,
     AVG(total_amount) AS avg_total_amount
-FROM RIDES_RAW_STAGING
+FROM RIDES_RAW
 WHERE precipitation IS NOT NULL
 GROUP BY
     pickup_hour,
@@ -130,12 +119,10 @@ GROUP BY
     precipitation
 ORDER BY pickup_hour;
 
-
 /* ============================================================
    Scatter Plot: Temperature vs Taxi Rides
    ============================================================ */
-
-CREATE OR REPLACE VIEW TABLEAU_TEMPERATURE_VS_RIDES_STAGING AS
+CREATE OR REPLACE VIEW TABLEAU_TEMPERATURE_VS_RIDES AS
 SELECT
     pickup_hour,
     condition,
@@ -144,7 +131,7 @@ SELECT
     COUNT(*) AS total_rides,
     AVG(trip_distance) AS avg_distance,
     AVG(total_amount) AS avg_total_amount
-FROM RIDES_RAW_STAGING
+FROM RIDES_RAW
 WHERE temperature IS NOT NULL
 GROUP BY
     pickup_hour,
@@ -153,12 +140,10 @@ GROUP BY
     temperature
 ORDER BY pickup_hour;
 
-
 /* ============================================================
    Scatter Plot: Humidity vs Taxi Rides
    ============================================================ */
-
-CREATE OR REPLACE VIEW TABLEAU_HUMIDITY_VS_RIDES_STAGING AS
+CREATE OR REPLACE VIEW TABLEAU_HUMIDITY_VS_RIDES AS
 SELECT
     pickup_hour,
     condition,
@@ -167,7 +152,7 @@ SELECT
     COUNT(*) AS total_rides,
     AVG(trip_distance) AS avg_distance,
     AVG(total_amount) AS avg_total_amount
-FROM RIDES_RAW_STAGING
+FROM RIDES_RAW
 WHERE humidity IS NOT NULL
 GROUP BY
     pickup_hour,
@@ -176,12 +161,10 @@ GROUP BY
     humidity
 ORDER BY pickup_hour;
 
-
 /* ============================================================
    Map / Heatmap: Pickup -> Dropoff
    ============================================================ */
-
-CREATE OR REPLACE VIEW TABLEAU_PICKUP_DROPOFF_HEATMAP_STAGING AS
+CREATE OR REPLACE VIEW TABLEAU_PICKUP_DROPOFF_HEATMAP AS
 SELECT
     pickup_borough,
     pickup_zone,
@@ -193,7 +176,7 @@ SELECT
     COUNT(*) AS total_rides,
     AVG(trip_distance) AS avg_distance,
     AVG(total_amount) AS avg_total_amount
-FROM RIDES_RAW_STAGING
+FROM RIDES_RAW
 GROUP BY
     pickup_borough,
     pickup_zone,
@@ -203,12 +186,10 @@ GROUP BY
     COALESCE(severity, 'Unknown'),
     DATE_TRUNC('day', pickup_datetime);
 
-
 /* ============================================================
    Dashboard Filters
    ============================================================ */
-
-CREATE OR REPLACE VIEW TABLEAU_DASHBOARD_FILTERS_STAGING AS
+CREATE OR REPLACE VIEW TABLEAU_DASHBOARD_FILTERS AS
 SELECT DISTINCT
     DATE_TRUNC('day', pickup_datetime) AS pickup_date,
     DAYNAME(pickup_datetime) AS dow,
@@ -217,4 +198,4 @@ SELECT DISTINCT
     COALESCE(severity, 'Unknown') AS severity,
     pickup_borough,
     dropoff_borough
-FROM RIDES_RAW_STAGING;
+FROM RIDES_RAW;
