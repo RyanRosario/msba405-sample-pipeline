@@ -41,7 +41,7 @@ for month in MONTHS:
         task_id=f"spark_{month.replace('-', '_')}",
         bash_command=f'''
             mkdir -p {month_output} &&
-            spark-submit --master local[*] \
+            /home/ryan/spark-4.1.1-bin-hadoop3/bin/spark-submit --master local[*] \
                 --driver-memory 2g \
                 --executor-memory 2g \
                 --conf spark.sql.shuffle.partitions=4 \
