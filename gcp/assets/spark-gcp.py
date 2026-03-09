@@ -61,7 +61,6 @@ def main():
     weather = (
         spark.read.csv(weather_path, header=True)
         .withColumn("HOUR", date_trunc("hour", to_timestamp("DATE")))
-        .filter((F.year("HOUR") == 2024) & (F.month("HOUR") == 1))
         .select("HOUR", "HourlyPrecipitation", "HourlyRelativeHumidity", "HourlyDryBulbTemperature", "HourlyPresentWeatherType")
         .withColumn("weather_code_first", split("HourlyPresentWeatherType", r"\|")[0])
         .withColumn(

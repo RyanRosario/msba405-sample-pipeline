@@ -29,23 +29,23 @@ echo "Submitting Dataproc job: ${JOB_NAME}"
 echo "Output path: ${OUTPUT_URI}"
 
 
-#if gcloud dataproc batches submit pyspark "${SPARK_URI}" \
-#    --region="${REGION}" \
-#    --batch="${JOB_NAME}" \
-#    --properties="spark.dynamicAllocation.enabled=true,spark.dynamicAllocation.minExecutors=2,spark.dynamicAllocation.maxExecutors=8,spark.executor.memory=4g,spark.executor.cores=4,spark.driver.memory=4g" \
-#    -- \
-#    "${RAW_TAXI_URI}" \
-#    "${ZONES_URI}" \
-#    "${WEATHER_URI}" \
-#    "${OUTPUT_URI}"
-#then
-#    echo "#### Spark job finished."
-#else
-#    STATUS=$?
-#    echo "!!!! Spark job failed with exit code ${STATUS}."
-#    cleanup_output
-#    exit "${STATUS}"
-#fi
+if gcloud dataproc batches submit pyspark "${SPARK_URI}" \
+    --region="${REGION}" \
+    --batch="${JOB_NAME}" \
+    --properties="spark.dynamicAllocation.enabled=true,spark.dynamicAllocation.minExecutors=2,spark.dynamicAllocation.maxExecutors=8,spark.executor.memory=4g,spark.executor.cores=4,spark.driver.memory=4g" \
+    -- \
+    "${RAW_TAXI_URI}" \
+    "${ZONES_URI}" \
+    "${WEATHER_URI}" \
+    "${OUTPUT_URI}"
+then
+    echo "#### Spark job finished."
+else
+    STATUS=$?
+    echo "!!!! Spark job failed with exit code ${STATUS}."
+    cleanup_output
+    exit "${STATUS}"
+fi
 
 echo "----------------------------"
 
