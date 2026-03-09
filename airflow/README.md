@@ -10,11 +10,13 @@ python3 -m venv airflow-env
 source airflow-env/bin/activate
 ```
 
-Install Airflow and all dependencies using the project's requirements file with constraint files for a stable, reproducible installation:
+Install Airflow and all dependencies using the project's requirements file with constraint files for a stable, reproducible installation. Move to the directory containing the sample Airflow configuration:
 
 ```bash
 AIRFLOW_VERSION=3.1.7
-AIRFLOW_HOME=~/airflow
+AIRFLOW_HOME=${HOME}/airflow
+mkdir -p $AIRFLOW_HOME
+
 PYTHON_VERSION="$(python --version | cut -d ' ' -f 2 | cut -d '.' -f 1-2)"
 CONSTRAINT_URL="https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${PYTHON_VERSION}.txt"
 
