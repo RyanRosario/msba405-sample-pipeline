@@ -25,9 +25,13 @@ pip install -r requirements.txt --constraint "$CONSTRAINT_URL"
 # pip install -e . --constraint "$CONSTRAINT_URL"
 ```
 
-> `apache-airflow-providers-fab` is included in `requirements.txt` and `pyproject.toml`. It is required in Airflow 3 to enable `airflow users create`, which was removed from core.
+Load the environment variables used by both the DAG and the systemd services:
 
-Set required environment variables (or load via `set -a && source pipeline.env && set +a`):
+```bash
+set -a
+source pipeline.env
+set +a
+```
 
 Initialize the Airflow databases:
 

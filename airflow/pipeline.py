@@ -1,20 +1,27 @@
 from airflow import DAG
-from airflow.operators.bash import BashOperator
+from airflow.providers.standard.operators.bash import BashOperator
 from datetime import datetime
 import os
 
-# ── Paths (set in .env, loaded into environment before starting Airflow) ──────
-BASE_DIR        = os.environ["PIPELINE_BASE_DIR"]        # e.g. /home/ubuntu/final/taxi/msba405-sample-pipeline
-SPARK_SCRIPT    = os.path.join(BASE_DIR, "spark/spark-job.py")
-DATA_DIR        = os.path.join(BASE_DIR, "data")
-ZONE_DATA       = os.path.join(DATA_DIR, "taxi_zone_lookup.csv")
-WEATHER_DATA    = os.path.join(DATA_DIR, "72505394728.csv")
-OUTPUT_DIR      = os.path.join(BASE_DIR, "output")
-DUCKDB_BIN      = os.environ.get("DUCKDB_EXECUTABLE", "duckdb")
-DUCKDB_DATABASE = os.path.join(BASE_DIR, os.environ.get("DUCKDB_DATABASE", "duckdb/final.db"))
-DUCKDB_QUERIES  = os.path.join(BASE_DIR, os.environ.get("DUCKDB_QUERIES",  "duckdb/queries.sql"))
+BASE_DIR = os.environ["PIPELINE_BASE_DIR"]
+SPARK_HOME = os.environ["SPARK_HOME"].rstrip("/")
+SPARK_SUBMIT = os.path.join(SPARK_HOME, "bin", "spark-submit")
 
-MONTHS = [f"2024-{m:02d}" for m in range(1, 13)]  # 2024-01 through 2024-12
+SPARK_SCRIPT = os.path.join(BASE_DIR, "spark/spark-job.py")
+DATA_DIR = os.path.join(BASE_DIR, "data")
+ZONE_DATA = os.path.join(DATA_DIR, "taxi_zone_lookup.csv")
+WEATHER_DATA = os.path.join(DATA_DIR, "72505394728.csv")
+OUTPUT_DIR = os.path.join(BASE_DIR, "output")
+
+DUCKDB_BIN = os.environ.get("DUCKDB_EXECUTABLE", "duckdb")
+DUCKDB_DATABASE = os.path.join(
+    BASE_DIR, os.environ.get("DUCKDB_DATABASE", "duckdb/final.db")
+)
+DUCKDB_QUERIES = os.path.join(
+    BASE_DIR, os.environ.get("DUCKDB_QUERIES", "duckdb/queries.sql")
+)
+
+MONTHS = [f"2024-{m:02d}" for m in range(1, 13)]
 
 # ── DAG definition ────────────────────────────────────────────────────────────
 default_args = {
@@ -39,18 +46,18 @@ for month in MONTHS:
 
     task = BashOperator(
         task_id=f"spark_{month.replace('-', '_')}",
-        bash_command=f'''
+        bash_command=f"""
             mkdir -p {month_output} &&
-            /home/ryan/spark-4.1.1-bin-hadoop3/bin/spark-submit --master local[*] \
+            {SPARK_SUBMIT} --master local[*] \
                 --driver-memory 2g \
                 --executor-memory 2g \
                 --conf spark.sql.shuffle.partitions=4 \
                 {SPARK_SCRIPT} \
                 {parquet_file} \
-                {ZONE_DATA} \
-                {WEATHER_DATA} \
-                {month_output}
-        ''',
+            {ZONE_DATA} \
+            {WEATHER_DATA} \
+            {month_output}
+        """,
         cwd=BASE_DIR,
         dag=dag,
     )
