@@ -4,7 +4,12 @@ from datetime import datetime
 import os
 
 BASE_DIR = os.environ["PIPELINE_BASE_DIR"]
-SPARK_HOME = os.environ["SPARK_HOME"].rstrip("/")
+SPARK_HOME = os.environ.get("SPARK_HOME")
+if not SPARK_HOME:
+    raise RuntimeError("SPARK_HOME must be defined in pipeline.env")
+else:
+    SPARK_HOME = SPARK_HOME.strip("/")
+
 SPARK_SUBMIT = os.path.join(SPARK_HOME, "bin", "spark-submit")
 
 SPARK_SCRIPT = os.path.join(BASE_DIR, "spark/spark-job.py")
